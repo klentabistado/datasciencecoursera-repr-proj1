@@ -1,25 +1,106 @@
 ---
 title: "Reproducible Research: Peer Assessment 1"
+author: "Klent Abistado"
+date: "8/25/2023"
 output: 
   html_document:
     keep_md: true
 ---
 
+```{r}
+library("data.table")
+library(ggplot2)
+```
 
 ## Loading and preprocessing the data
+```{r}
+fileUrl <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+download.file(fileUrl, destfile = paste0(getwd(), '/repdata%2Fdata%2Factivity.zip'), method = "curl")
+unzip("repdata%2Fdata%2Factivity.zip",exdir = "repdata")
+```
 
-
+```{r}
+activity <- data.table::fread(input = "repdata/activity.csv")
+head(activity)
+```
 
 ## What is mean total number of steps taken per day?
+1. Get the total number of steps taken daily.
 
+```{r}
+daily_steps <- activity[, c(lapply(.SD, sum, na.rm = FALSE)), .SDcols = c("steps"), by = .(date)] 
+head(daily_steps)
+```
 
+```{r}
+ggplot(daily_steps, aes(x = steps)) +
+    geom_histogram(binwidth = 1000) + theme_minimal() +
+    labs(title = "Daily Steps", x = "Steps", y = "Frequency")
+```
+
+2. The mean of daily steps.
+```{r}
+daily_steps[, .(mean = mean(steps, na.rm = TRUE), median = median(steps, na.rm = TRUE))]
+```
 
 ## What is the average daily activity pattern?
+```{r}
+interval <- activity[, c(lapply(.SD, mean, na.rm = TRUE)), .SDcols = c("steps"), by = .(interval)] 
 
-
+ggplot(interval, aes(x = interval , y = steps)) + geom_line() +
+  theme_minimal() +
+  labs(title = "Avg. Daily Steps", x = "Interval", y = "Avg. Steps per day")
+```
+```{r}
+head(interval)
+```
 
 ## Imputing missing values
+1. Calculate and report the total number of missing values in the dataset (i.e. the total number of rows with NA NAs)
+```{r}
+activity[is.na(steps), .N ]
+nrow(activity[is.na(steps),])
+```
+2. Devise a strategy for filling in all of the missing values in the dataset. The strategy does not need to be sophisticated. For example, you could use the mean/median for that day, or the mean for that 5-minute interval, etc.
 
+```{r}
+activity[is.na(steps), "steps"] <- activity[, c(lapply(.SD, median, na.rm = TRUE)), .SDcols = c("steps")]
+```
+3. Create a new dataset that is equal to the original dataset but with the missing data filled in.
 
+```{r}
+data.table::fwrite(x = activity, file = "repdata/tidyData.csv", quote = FALSE)
+```
+4. Make a histogram of the total number of steps taken each day and calculate and report the mean and median total number of steps taken per day. Do these values differ from the estimates from the first part of the assignment? What is the impact of imputing missing data on the estimates of the total daily number of steps?
+
+```{r}
+total_steps <- activity[, c(lapply(.SD, sum)), .SDcols = c("steps"), by = .(date)]
+total_steps[, .(mean = mean(steps), median = median(steps))]
+
+ggplot(total_steps, aes(x = steps)) + geom_histogram(binwidth = 1000) +
+  theme_minimal() +
+  labs(title = "Daily Steps", x = "Steps", y = "Frequency")
+```
+
+Estimate Type | Mean Steps | Median Steps
+--- | --- | ---
+With na | 10766.19 | 10765
+Fillin na with median | 9354.23 | 10395
 
 ## Are there differences in activity patterns between weekdays and weekends?
+```{r}
+activity <- data.table::fread(input = "repdata/activity.csv")
+activity[, date := as.POSIXct(date, format = "%Y-%m-%d")]
+activity[, `Day`:= weekdays(x = date)]
+activity[grepl(pattern = "Monday|Tuesday|Wednesday|Thursday|Friday", x = `Day`), "Week Type"] <- "Weekday"
+activity[grepl(pattern = "Saturday|Sunday", x = `Day`), "Week Type"] <- "Weekend"
+activity[, `Week Type` := as.factor(`Week Type`)]
+
+activity[is.na(steps), "steps"] <- activity[, c(lapply(.SD, median, na.rm = TRUE)), .SDcols = c("steps")]
+interval <- activity[, c(lapply(.SD, mean, na.rm = TRUE)), .SDcols = c("steps"), by = .(interval, `Week Type`)] 
+
+ggplot(interval , aes(x = interval , y = steps, color=`Week Type`)) + geom_line(colour = 'black') + 
+  theme_minimal() +
+  labs(title = "Week Type Avg. Daily Steps", x = "Interval", y = "No. of Steps") + facet_wrap(~`Week Type` , ncol = 1, nrow=2)
+```
+
